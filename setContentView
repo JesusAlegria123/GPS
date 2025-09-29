@@ -1,0 +1,28 @@
+val autocompleteFragment = supportFragmentManager
+    .findFragmentById(R.id.autocomplete_fragment) as AutocompleteSupportFragment
+
+autocompleteFragment.setPlaceFields(listOf(Place.Field.ID, Place.Field.NAME, Place.Field.LAT_LNG))
+
+autocompleteFragment.setOnPlaceSelectedListener(object : PlaceSelectionListener {
+    override fun onPlaceSelected(place: Place) {
+        // Aquí tienes el destino seleccionado
+        val destino = place.latLng
+        mMap.clear()
+        if (destino != null) {
+            mMap.addMarker(MarkerOptions().position(destino).title(place.name))
+            // vuelve a obtener tu ubicación y dibuja la ruta
+            val token = CancellationTokenSource()
+            fusedLocationClient.getCurrentLocation(
+                Priority.PRIORITY_HIGH_ACCURACY, token.token
+            ).addOnSuccessListener { location ->
+                if (location != null) {
+                    val origin = LatLng(location.latitude, location.longitude)
+                    drawRoute(origin, destino)
+                }
+            }
+        }
+    }
+    override fun onError(status: com.google.android.gms.common.api.Status) {
+        Toast.makeText(this@MapsActivity, "Error: $status", Toast.LENGTH_SHORT).show()
+    }
+})
