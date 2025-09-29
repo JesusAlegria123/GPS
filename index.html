@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Registro GPS</title>
+  <style>
+    body { font-family: Arial, sans-serif; padding: 20px; }
+    #status { margin-top: 10px; }
+    button { padding: 10px 14px; font-size: 16px; }
+  </style>
+</head>
+<body>
+  <h2>Registrar posición (móvil)</h2>
+  <div>
+    <label>Device ID: <input id="deviceId" placeholder="device_001" /></label>
+  </div>
+  <div style="margin-top:10px;">
+    <button id="startBtn">Iniciar envío</button>
+    <button id="stopBtn" disabled>Detener</button>
+  </div>
+
+  <div id="status">Estado: detenido</div>
+
+<script>
+  const API_URL = "https://TU_API_GATEWAY_DOMAIN/locations"; // <-- pon aquí tu endpoint
+  const API_KEY = "MI_API_KEY_OPCIONAL"; // opcional; si usas x-api-key o token
+  const intervalMs = 15_000; // intervalo envío (15s). Ajusta según necesidad
+
+  let watchId = null;
+  let sendInterval = null;
+  let lastPos = null;
+
+  const deviceIdInput = document.getElementById('deviceId');
+  const startBtn = document.getElementById('startBtn');
+  const stopBtn = document.getElementById('stopBtn');
+  const statusDiv = document.getElementById('status');
+
+  async function sendLocation(position) {
+    if (!position) return;
+    const payload = {
+      deviceId: deviceIdInput.value || "unknown_device",
+      timestamp: Date.now(),
+      latitude: position.coords.latitude,
+      longitude: position.coords.longitude,
+      accuracy: position.coords.accuracy
+    };
+
+    try {
+      const res = await fetch(API_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': API_KEY
+        },
+        body: JSON.stringify(payload),
+        mode: 'cors'
+      });
+      if (!res.ok) {
+        console.error("Error al enviar:", res.statusText);
+        statusDiv.innerText = `Estado: error al enviar (${res.status})`;
+      } else {
+        statusDiv.innerText = `Enviado: ${payload.latitude}, ${payload.longitude} (${new Date(payload.timestamp).toLocaleTimeString()})`;
+      }
+    } catch (err) {
+      console.error("Fetch error:", err);
+      statusDiv.innerText = `Estado: error de red`;
+    }
+  }
+
+  function onPosition(pos) {
+    lastPos = pos;
+    // Puedes enviar inmediatamente o esperar al intervalo
+    sendLocation(pos);
+  }
+
+  function onError(err) {
+    console.warn("geo error:", err);
+    statusDiv.innerText = "Estado: error de geolocalización - " + err.message;
+  }
+
+  startBtn.onclick = () => {
+    if (!navigator.geolocation) {
+      alert("Geolocalización no soportada en este navegador");
+      return;
+    }
+    // Usamos getCurrentPosition y luego watchPosition opcionalmente
+    statusDiv.innerText = "Obteniendo ubicación...";
+    // pide permiso y obtiene la ubicación inicial
+    navigator.geolocation.getCurrentPosition(pos => {
+      onPosition(pos);
+      // regresa watch para actualizaciones en tiempo real
+      watchId = navigator.geolocation.watchPosition(onPosition, onError, {
+        enableHighAccuracy: true,
+        maximumAge: 5000,
+        timeout: 10000
+      });
+
+      // También aseguramos envíos periódicos aunque watchPosition no cambie frecuentemente
+      sendInterval = setInterval(() => {
+        if (lastPos) sendLocation(lastPos);
+      }, intervalMs);
+
+      startBtn.disabled = true;
+      stopBtn.disabled = false;
+      statusDiv.innerText = "Enviando posiciones...";
+    }, onError, { enableHighAccuracy: true, timeout: 10000 });
+  };
+
+  stopBtn.onclick = () => {
+    if (watchId !== null) {
+      navigator.geolocation.clearWatch(watchId);
+      watchId = null;
+    }
+    if (sendInterval) {
+      clearInterval(sendInterval);
+      sendInterval = null;
+    }
+    startBtn.disabled = false;
+    stopBtn.disabled = true;
+    statusDiv.innerText = "Estado: detenido";
+  };
+</script>
+</body>
+</html>
